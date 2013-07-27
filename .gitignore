@@ -1,0 +1,10 @@
+.installed.cfg
+bin/
+develop-eggs/
+eggs/
+*.egg-info/
+.ropeproject/
+
+*$py.class
+*.pyc
+*.sw[pon]
