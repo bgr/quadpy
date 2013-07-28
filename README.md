@@ -1,5 +1,47 @@
-Python port of https://github.com/pdehn/jsQuad
-original readme below:
+quadpy - Quadtree implementation for Python
+===========================================
+
+Based on javascript implementation by Patrick DeHaan:
+[github.com/pdehn/jsQuad](https://github.com/pdehn/jsQuad)
+
+
+differences between quadpy and jsQuad
+-------------------------------------
+
+* dropped requirements for contained objects to implement `QTenclosed`,
+  `QToverlaps`, `QTquadrantNode`, those checks are now performed by
+  quadtree - that is enough for coarse querying, exact hit testing is left to
+  the user
+* contained objects are required to only implement these two properties:
+  - `bounds` (can be read-only)
+  - `qt_parent` (read and write, called `QTsetParent` and `QTgetParent` in
+    original version)
+
+* method names converted from camelCase to underscore_format
+* quadrants are placed in different order: TL, TR, BL, BR
+* subdivide is a method of Node
+
+* original code had following bugs:
+  - removing would cause infinite loop - jsQuad.js line 120: `.remove` should
+    be `._remove`
+  - removing last element from node didn't remove the node (nor its parents)
+
+* added method `get_children_under_point`
+
+* removed methods: 
+  - `selectChildren` (use `get_children`)
+  - `selectEnclosed` (use `get_enclosed_children`)
+  - `selectOverlapping` (use `get_overlapped_children`)
+  - `mapChildren`
+  - `mapEnclosed`
+  - `mapOverlapping`
+  - `applyChildren`
+  - `applyEnclosed`
+  - `applyOverlapping`
+
+
+original readme below
+---------------------
 
 - - -
 

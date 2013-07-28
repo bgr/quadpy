@@ -7,7 +7,7 @@ from setuptools import setup, find_packages
 setup(
     name = "quadpy",
     version = "0.1.0",
-    description = ("MX-CIF Quadtree"),
+    description = ("Quadtree implementation for Python"),
     author = "bgr",
     author_email = "bgrgyk@gmail.com",
     url = "https://github.com/bgr/quadpy",
