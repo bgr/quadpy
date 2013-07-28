@@ -5,6 +5,10 @@ eggs/
 *.egg-info/
 .ropeproject/
 
+# added by mr.developer extension:
+src/
+.mr.developer.cfg
+
 *$py.class
 *.pyc
 *.sw[pon]
