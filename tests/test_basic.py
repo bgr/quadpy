@@ -1,40 +1,8 @@
 import pytest
-from random import randint
 from quadpy import Node
 from quadpy.quadtree import fits, overlaps
+from quadpy.rectangle import Rectangle, random_rectangle
 
-
-class Rectangle(object):
-    def __init__(self, x_min, y_min, x_max, y_max):
-        if x_min > x_max:
-            raise ValueError("x_min cannot be greater than x_max")
-        if y_min > y_max:
-            raise ValueError("y_min cannot be greater than y_max")
-        self.x_min = x_min
-        self.x_max = x_max
-        self.y_min = y_min
-        self.y_max = y_max
-        self.qt_parent = None
-        self.bounds = (x_min, y_min, x_max, y_max)
-
-    def __repr__(self):
-        return "{0}({1}, {2}, {3}, {4})".format(self.__class__.__name__,
-                                                *self.bounds)
-
-    def __eq__(self, other):
-        return self.bounds == other.bounds and isinstance(other, Rectangle)
-
-
-def get_random_rect(within_bounds):
-    x1 = randint(within_bounds[0], within_bounds[2])
-    x2 = randint(within_bounds[0], within_bounds[2])
-    y1 = randint(within_bounds[1], within_bounds[3])
-    y2 = randint(within_bounds[1], within_bounds[3])
-    if x1 > x2:
-        x1, x2 = x2, x1
-    if y1 > y2:
-        y1, y2 = y2, y1
-    return Rectangle(x1, y1, x2, y2)
 
 
 class Test_fits_and_overlaps_helper_functions:
@@ -68,10 +36,10 @@ class Test_fits_and_overlaps_helper_functions:
 
 class Test_subdivisions_working:
     @pytest.mark.parametrize('coords', [
-        (0.1, 0.1, 0.2, 0.2),
-        (1023.1, 0.1, 1023.2, 0.2),
-        (1023.1, 1023.1, 1023.2, 1023.2),
-        (0.1, 1023.1, 0.2, 1023.2),
+        (0.001, 0.001, 0.002, 0.002),
+        (1023.998, 0.001, 1023.999, 0.002),
+        (1023.998, 1023.998, 1023.999, 1023.999),
+        (0.001, 1023.998, 0.002, 1023.999),
     ])
     @pytest.mark.parametrize('max_depth', list(range(20)))
     def test_insert_small_rect_in_corner(self, max_depth, coords):
@@ -137,13 +105,13 @@ class Test_insert_and_remove_multiple_items:
 
         qt.insert(rect1)
         qt.insert(rect2)
-        assert sorted(qt.get_children()) == sorted([rect1, rect2])
+        assert qt.get_children() == [rect1, rect2]
 
         qt.remove(rect1)
         assert qt.get_children() == [rect2]
 
         qt.insert(rect1)
-        assert sorted(qt.get_children()) == sorted([rect1, rect2])
+        assert qt.get_children() == [rect1, rect2]
 
         qt.remove(rect2)
         assert qt.get_children() == [rect1]
@@ -159,13 +127,13 @@ class Test_insert_and_remove_multiple_items:
 
         qt.insert(rect1)
         qt.insert(rect2)
-        assert sorted(qt.get_children()) == sorted([rect1, rect2])
+        assert qt.get_children() == [rect1, rect2]
 
         qt.remove(rect1)
         assert qt.get_children() == [rect2]
 
         qt.insert(rect1)
-        assert sorted(qt.get_children()) == sorted([rect1, rect2])
+        assert qt.get_children() == [rect1, rect2]
 
         qt.remove(rect2)
         assert qt.get_children() == [rect1]
@@ -176,7 +144,7 @@ class Test_insert_and_remove_multiple_items:
 
     def test_clear(self):
         qt = Node(0, 0, 1000, 1000)
-        [qt.insert(get_random_rect(qt.bounds)) for _ in range(300)]
+        [qt.insert(random_rectangle(qt.bounds)) for _ in range(300)]
         assert len(qt.get_children()) == 300
         assert qt._get_depth() in [3, 4]  # can't know for sure
         qt.clear()
@@ -186,9 +154,31 @@ class Test_insert_and_remove_multiple_items:
 
 class Test_reinsert:
     @pytest.mark.parametrize('max_depth', list(range(1, 20)))
-    def test_reinsert_small_rect_in_corner(self, max_depth):
-        bounds_1 = (0.1, 0.1, 0.2, 0.2)
-        bounds_2 = (1023.1, 1023.1, 1023.2, 1023.2)
+    def test_reinsert_into_same_quadrant(self, max_depth):
+        bounds = (0.001, 0.001, 0.002, 0.002)
+        qt = Node(0, 0, 1024, 1024, max_depth)
+        assert qt._get_depth() == 0
+        assert qt._get_number_of_nodes() == 1
+        rect = Rectangle(*bounds)
+
+        qt.insert(rect)
+        assert qt._get_depth() == max_depth
+        assert qt._get_number_of_nodes() == 1 + max_depth * 4
+        # make sure that top-left quadrant is the only one subdivided
+        depths = [qt.quadrants[i]._get_depth() for i in range(4)]
+        assert depths == [max_depth - 1, 0, 0, 0]
+
+        # change coords and reinsert into same place
+        qt.reinsert(rect)
+        assert qt._get_depth() == max_depth
+        assert qt._get_number_of_nodes() == 1 + max_depth * 4
+        depths = [qt.quadrants[i]._get_depth() for i in range(4)]
+        assert depths == [max_depth - 1, 0, 0, 0]
+
+    @pytest.mark.parametrize('max_depth', list(range(1, 14)))
+    def test_reinsert_into_another_quadrant(self, max_depth):
+        bounds_1 = (0.01, 0.01, 0.02, 0.02)
+        bounds_2 = (1023.998, 1023.998, 1023.999, 1023.999)
         qt = Node(0, 0, 1024, 1024, max_depth)
         assert qt._get_depth() == 0
         assert qt._get_number_of_nodes() == 1
@@ -199,7 +189,6 @@ class Test_reinsert:
 
         # make sure that top-left quadrant is the only one subdivided
         depths = [qt.quadrants[i]._get_depth() for i in range(4)]
-        print depths
         assert depths == [max_depth - 1, 0, 0, 0]
 
         # change coords and reinsert
@@ -210,5 +199,4 @@ class Test_reinsert:
 
         # make sure that bottom-right quadrant is the only one subdivided
         depths = [qt.quadrants[i]._get_depth() for i in range(4)]
-        print depths
         assert depths == [0, 0, 0, max_depth - 1]

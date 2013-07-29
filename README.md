@@ -5,28 +5,54 @@ Based on javascript implementation by Patrick DeHaan:
 [github.com/pdehn/jsQuad](https://github.com/pdehn/jsQuad)
 
 
-differences between quadpy and jsQuad
--------------------------------------
+Requirements
+------------
+Python 2.6+ should work
 
+
+Demo app
+--------
+Demo GUI app is included, to set it up for the first time do:
+
+    python bootstrap.py
+    bin/buildout -c buildout-demo.cfg
+    bin/develop activate hsmpy
+    bin/buildout -c buildout-demo.cfg  # makes buildout aware of hsmpy
+
+Then you can run it using:
+    
+    bin/mypy_demo -m demo.demo
+
+**Note**: demo app has dependency on Tkinter for GUI. If you get
+Tkinter-related ImportError try installing `python-tk` package on your system.
+
+If you get hsmpy-related error either you didn't activate the hsmpy package
+using commands above or I've broken compatibility and didn't update demo app.
+
+
+Differences between quadpy and jsQuad
+-------------------------------------
 * dropped requirements for contained objects to implement `QTenclosed`,
   `QToverlaps`, `QTquadrantNode`, those checks are now performed by
   quadtree - that is enough for coarse querying, exact hit testing is left to
   the user
-* contained objects are required to only implement these two properties:
-  - `bounds` (can be read-only)
-  - `qt_parent` (read and write, called `QTsetParent` and `QTgetParent` in
-    original version)
+* changed requirement for `QTsetParent` and `QTgetParent`, see next point
+* **contained objects are required to expose these two properties** (must
+  be able to set their values):
+  - **`bounds`** - 4-tuple specifying sides *(left_x, top_y, right_x, bottom_y)*
+  - **`qt_data`** - will be set by quadpy upon inserting
 
 * method names converted from camelCase to underscore_format
 * quadrants are placed in different order: TL, TR, BL, BR
-* subdivide is a method of Node
+* `subdivide` is a method of Node
 
 * original code had following bugs:
-  - removing would cause infinite loop - jsQuad.js line 120: `.remove` should
-    be `._remove`
+  - removing would cause infinite loop (*jsQuad.js line 120*: `.remove` should
+    be `._remove`)
   - removing last element from node didn't remove the node (nor its parents)
 
-* added method `get_children_under_point`
+* added method `get_children_under_point` (works by calling
+  get_overlapped_children with zero-dimensions rectangle)
 
 * removed methods: 
   - `selectChildren` (use `get_children`)
@@ -40,8 +66,12 @@ differences between quadpy and jsQuad
   - `applyOverlapping`
 
 
-original readme below
----------------------
+Note that although this implementation is currently *MX-CIF* as the one it's
+based on, that might change in the future if need be.
+
+
+
+*original readme below*
 
 - - -
 

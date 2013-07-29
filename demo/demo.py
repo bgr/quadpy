@@ -5,24 +5,8 @@ except ImportError:
 # hsmpy is Hierarchical State Machine implementation for Python
 # it's used here to implement GUI logic
 import quadpy
+from quadpy.rectangle import Rectangle, random_rectangle
 from hsmpy import HSM, State, T, Initial, Internal, EventBus, Event
-
-
-class Rectangle(object):
-    def __init__(self, x_min, y_min, x_max, y_max):
-        if x_min > x_max:
-            raise ValueError("x_min cannot be greater than x_max")
-        if y_min > y_max:
-            raise ValueError("y_min cannot be greater than y_max")
-        self.qt_parent = None
-        self.bounds = (x_min, y_min, x_max, y_max)
-
-    def __repr__(self):
-        return "{0}({1}, {2}, {3}, {4})".format(self.__class__.__name__,
-                                                *self.bounds)
-
-    def __eq__(self, other):
-        return self.bounds == other.bounds and isinstance(other, Rectangle)
 
 
 # tool aliases
@@ -70,10 +54,11 @@ canvas.bind('<ButtonRelease-1>', lambda e: eb.dispatch(Canvas_Up(e.x, e.y)))
 
 
 # I'll just put these here and reference them directly later, for simplicity
-quad = quadpy.Node(0, 0, 700, 700, max_depth=6)
+quad = quadpy.Node(0, 0, 700, 700, max_depth=9)
 canvas_temp_data = (0, 0, None)  # (start_x, start_y, Rectangle being drawn)
-canvas_elements = []  # all other Rectangles
-canvas_grid = []  # ids of already drawn canvas rects visualizing quadtree grid
+#canvas_elements = []  # all other Rectangles
+canvas_grid = {}  # quadtree grid, mapping: bounds -> tkinter rectangle id
+
 
 
 # HSM state and transition actions:
@@ -86,10 +71,24 @@ def update_chosen_tool(evt, hsm):
 
 
 def update_grid():
-    global canvas_grid
-    [canvas.delete(old_id) for old_id in canvas_grid]
-    canvas_grid = [canvas.create_rectangle(b) for b in quad._get_grid_bounds()]
-    print quad._get_depth()
+    updated_bounds = set(quad._get_grid_bounds())
+    current_bounds = set(canvas_grid.keys())
+    deleted = current_bounds.difference(updated_bounds)
+    added = updated_bounds.difference(current_bounds)
+    for d in deleted:
+        canvas.delete(canvas_grid[d])
+        del canvas_grid[d]
+    for a in added:
+        added_id = canvas.create_rectangle(a, outline='grey')
+        canvas_grid[a] = added_id
+
+
+# TODO remove
+for i in range(1, 1000):
+    r = random_rectangle(quad.bounds, i/10.0)
+    quad.insert(r)
+    canvas.create_rectangle(r.bounds, outline='blue')
+update_grid()
 
 
 def initialize_rectangle(evt, hsm):
@@ -98,7 +97,7 @@ def initialize_rectangle(evt, hsm):
     bounds = (x, y, x + 1, y + 1)
     #bounds = (40, 40, x + 1, y + 1)
     rect = Rectangle(*bounds)
-    rect.canvas_id = canvas.create_rectangle(bounds)
+    rect.canvas_id = canvas.create_rectangle(bounds, outline='blue')
     canvas_temp_data = (x, y, rect)
     quad.insert(rect)
     update_grid()
@@ -106,20 +105,11 @@ def initialize_rectangle(evt, hsm):
 
 def draw_rectangle(evt, hsm):
     x, y, rect = canvas_temp_data
-    bounds = fix_bounds(x, y, evt.x, evt.y)
+    bounds = (x, y, evt.x, evt.y)
     rect.bounds = bounds
     canvas.coords(rect.canvas_id, bounds)
     quad.reinsert(rect)
     update_grid()
-
-
-# TODO make this be done automatically by quadpy
-def fix_bounds(x_min, y_min, x_max, y_max):
-    if x_max < x_min:
-        x_min, x_max = x_max, x_min
-    if y_max < y_min:
-        y_min, y_max = y_max, y_min
-    return (x_min, y_min, x_max, y_max)
 
 
 def is_over_element(evt, hsm):
@@ -192,7 +182,7 @@ trans = {
     },
     'drawing': {
         Canvas_Move: Internal(action=draw_rectangle),
-        Canvas_Up: T('draw_tool_chosen'),
+        Canvas_Up: T('draw_tool_chosen', action=lambda _, __: update_grid()),
     },
 }
 

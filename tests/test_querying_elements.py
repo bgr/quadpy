@@ -1,6 +1,6 @@
 from random import randint
 from quadpy import Node
-from test_basic import Rectangle
+from quadpy.rectangle import Rectangle
 
 
 key = lambda r: r.bounds
