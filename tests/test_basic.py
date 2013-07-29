@@ -182,3 +182,33 @@ class Test_insert_and_remove_multiple_items:
         qt.clear()
         assert qt.get_children() == []
         assert qt.direct_children == []
+
+
+class Test_reinsert:
+    @pytest.mark.parametrize('max_depth', list(range(1, 20)))
+    def test_reinsert_small_rect_in_corner(self, max_depth):
+        bounds_1 = (0.1, 0.1, 0.2, 0.2)
+        bounds_2 = (1023.1, 1023.1, 1023.2, 1023.2)
+        qt = Node(0, 0, 1024, 1024, max_depth)
+        assert qt._get_depth() == 0
+        assert qt._get_number_of_nodes() == 1
+        rect = Rectangle(*bounds_1)
+        qt.insert(rect)
+        assert qt._get_depth() == max_depth
+        assert qt._get_number_of_nodes() == 1 + max_depth * 4
+
+        # make sure that top-left quadrant is the only one subdivided
+        depths = [qt.quadrants[i]._get_depth() for i in range(4)]
+        print depths
+        assert depths == [max_depth - 1, 0, 0, 0]
+
+        # change coords and reinsert
+        rect.bounds = bounds_2
+        qt.reinsert(rect)
+        assert qt._get_depth() == max_depth
+        assert qt._get_number_of_nodes() == 1 + max_depth * 4
+
+        # make sure that bottom-right quadrant is the only one subdivided
+        depths = [qt.quadrants[i]._get_depth() for i in range(4)]
+        print depths
+        assert depths == [0, 0, 0, max_depth - 1]

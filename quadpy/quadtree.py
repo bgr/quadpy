@@ -116,11 +116,11 @@ class Node(object):
         parent._reinsert(child)
 
     def _reinsert(self, child):
-        if fits(child.bounds, self.bounds):
+        if fits(child.bounds, self.bounds) or self.parent is None:
             self._insert(child)
         else:
-            if self.parent is None:
-                raise ValueError("New child bounds don't fit in quadtree")
+            #if self.parent is None:
+                #raise ValueError("New child bounds don't fit in quadtree")
             self.parent._reinsert(child)
 
     def remove(self, child):
@@ -207,6 +207,11 @@ class Node(object):
         if not self.quadrants:
             return 1
         return 1 + sum(q._get_number_of_nodes() for q in self.quadrants)
+
+    def _get_grid_bounds(self):
+        if not self.quadrants:
+            return [self.bounds]
+        return [b for q in self.quadrants for b in q._get_grid_bounds()]
 
     def __repr__(self):
         params = [str(p) for p in list(self.bounds) + [self.max_depth,
