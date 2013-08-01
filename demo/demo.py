@@ -5,8 +5,13 @@ except ImportError:
 # hsmpy is Hierarchical State Machine implementation for Python
 # it's used here to implement GUI logic
 import quadpy
-from quadpy.rectangle import Rectangle, random_rectangle
-from hsmpy import HSM, State, T, Initial, Internal, EventBus, Event
+from quadpy.rectangle import Rectangle
+from hsmpy import HSM, State, T, Initial, Internal, Choice, EventBus, Event
+
+
+# you can enable logging to see what's going on under the hood of HSM
+#import logging
+#logging.basicConfig(level=logging.DEBUG)
 
 
 # tool aliases
@@ -53,22 +58,25 @@ canvas.bind('<B1-Motion>', lambda e: eb.dispatch(Canvas_Move(e.x, e.y)))
 canvas.bind('<ButtonRelease-1>', lambda e: eb.dispatch(Canvas_Up(e.x, e.y)))
 
 
+
 # I'll just put these here and reference them directly later, for simplicity
 quad = quadpy.Node(0, 0, 700, 700, max_depth=9)
-canvas_temp_data = (0, 0, None)  # (start_x, start_y, Rectangle being drawn)
-#canvas_elements = []  # all other Rectangles
+selected_elems = []
 canvas_grid = {}  # quadtree grid, mapping: bounds -> tkinter rectangle id
 
 
 
-# HSM state and transition actions:
+
+##### HSM state and transition actions #####
+
 
 def update_chosen_tool(evt, hsm):
     for lbl in labels:
-        print evt.data, lbl['text'], evt.data == lbl['text']
         lbl['relief'] = 'sunken' if evt.data == lbl['text'] else 'raised'
     hsm.data.canvas_tool = evt.data
 
+
+# quadtree grid visualization:
 
 def update_grid():
     updated_bounds = set(quad._get_grid_bounds())
@@ -83,28 +91,20 @@ def update_grid():
         canvas_grid[a] = added_id
 
 
-# TODO remove
-for i in range(1, 1000):
-    r = random_rectangle(quad.bounds, i/10.0)
-    quad.insert(r)
-    canvas.create_rectangle(r.bounds, outline='blue')
-update_grid()
-
+# drawing new rectangle:
 
 def initialize_rectangle(evt, hsm):
-    global canvas_temp_data
     x, y = evt.data
     bounds = (x, y, x + 1, y + 1)
-    #bounds = (40, 40, x + 1, y + 1)
     rect = Rectangle(*bounds)
     rect.canvas_id = canvas.create_rectangle(bounds, outline='blue')
-    canvas_temp_data = (x, y, rect)
+    hsm.data.canvas_temp_data = (x, y, rect)
     quad.insert(rect)
     update_grid()
 
 
 def draw_rectangle(evt, hsm):
-    x, y, rect = canvas_temp_data
+    x, y, rect = hsm.data.canvas_temp_data
     bounds = (x, y, evt.x, evt.y)
     rect.bounds = bounds
     canvas.coords(rect.canvas_id, bounds)
@@ -112,82 +112,127 @@ def draw_rectangle(evt, hsm):
     update_grid()
 
 
-def is_over_element(evt, hsm):
-    elems = hsm.data.quadtree.get_children_under_point(evt.x, evt.y)
-    return len(elems) > 0
+# selecting and moving:
+
+def elems_under_cursor(evt, hsm):
+    return quad.get_children_under_point(evt.x, evt.y)
 
 
-def is_not_over_element(evt, hsm):
-    return not is_over_element(evt, hsm)
+def select_elems(elems):
+    global selected_elems
+    [canvas.itemconfig(e.canvas_id, outline='blue') for e, _ in selected_elems]
+    selected_elems = [(el, el.bounds) for el in elems]
+    [canvas.itemconfig(e.canvas_id, outline='red') for e, _ in selected_elems]
 
 
-def drag_selection_marquee(evt, hsm):
-    pass
+def select_under_cursor(evt, hsm):
+    hsm.data.moving_start = (evt.x, evt.y)
+    elems = elems_under_cursor(evt, hsm)
+    if not elems:
+        assert False, "this cannot happen"
+    just_elems = set(el for el, _ in selected_elems)
+    if not any(el in just_elems for el in elems):
+        # clicked non-selected element, select it
+        select_elems([elems[0]])
+    else:
+        # hack to refresh initial bounds for each tuple in selected_elems
+        select_elems([el for el, _ in selected_elems])
 
+
+def move_elements(evt, hsm):
+    x, y = hsm.data.moving_start
+    off_x, off_y = evt.x - x, evt.y - y
+    for el, original_bounds in selected_elems:
+        x1, y1, x2, y2 = original_bounds
+        el.bounds = (x1 + off_x, y1 + off_y, x2 + off_x, y2 + off_y)
+        canvas.coords(el.canvas_id, el.bounds)
+        quad.reinsert(el)
+    update_grid()
+
+
+# selection marquee
+
+def create_marquee_rect(evt, hsm):
+    rect_id = canvas.create_rectangle((evt.x, evt.y, evt.x, evt.y),
+                                      outline='orange')
+    hsm.data.canvas_marquee = (evt.x, evt.y, rect_id)
+    select_elems([])
+
+
+def drag_marquee_rect(evt, hsm):
+    x, y, rect_id = hsm.data.canvas_marquee
+    bounds = (x, y, evt.x, evt.y)
+    select_elems(quad.get_overlapped_children(bounds))
+    canvas.coords(rect_id, bounds)
+
+
+def clear_marquee_rect(evt, hsm):
+    _, _, rect_id = hsm.data.canvas_marquee
+    canvas.delete(rect_id)
+
+
+# define HSM state structure and transitions between states:
 
 states = {
     'app': State({
         'select_tool_chosen': State({
-            'hovering': State({
-                'hovering_over_background': State(),
-                'hovering_over_element': State(),
-            }),
-            'dragging_marquee': State(),
-            'moving_elements': State(),
+            'select_tool_hovering': State(),
+            'dragging_marquee': State(on_enter=create_marquee_rect,
+                                      on_exit=clear_marquee_rect),
+            'moving_elements': State(on_enter=select_under_cursor),
         }),
         'draw_tool_chosen': State({
-            'wait_for_draw': State(),
+            'draw_tool_hovering': State(),
             'drawing': State(),
         })
     })
 }
 
-trans = {
+transitions = {
     'app': {
         Initial: T('draw_tool_chosen'),
+        Tool_Changed: Choice({
+            Selection_tool: 'select_tool_chosen',
+            Drawing_tool: 'draw_tool_chosen' },
+            default='select_tool_chosen',
+            action=update_chosen_tool)
     },
     'select_tool_chosen': {
-        Initial: T('hovering'),
-        Tool_Changed: T('draw_tool_chosen', action=update_chosen_tool),
-        # TODO move to 'app' state
+        Initial: T('select_tool_hovering'),
+        Canvas_Up: T('select_tool_hovering'),
     },
     ####
-    'hovering': {
-        Initial: T('hovering_over_background'),
-    },
-    'hovering_over_background': {
-        Canvas_Move: T('hovering_over_element', guard=is_over_element),
-        Canvas_Down: T('dragging_marquee'),
-    },
-    'hovering_over_element': {
-        Canvas_Move: T('hovering_over_background', guard=is_not_over_element),
-        Canvas_Down: T('moving_elements'),
+    'select_tool_hovering': {
+        Canvas_Down: Choice({
+            False: 'dragging_marquee',
+            True: 'moving_elements', },
+            default='dragging_marquee',
+            key=lambda e, h: len(elems_under_cursor(e, h)) > 0),
     },
     'dragging_marquee': {
-        Canvas_Move: Internal(action=drag_selection_marquee),
-        Canvas_Up: T('hovering_over_element'),
+        Canvas_Move: Internal(action=drag_marquee_rect),
     },
     'moving_elements': {
-        #Canvas_Move: Internal(action=move_elements),
-        Canvas_Up: T('hovering_over_element'),
+        Canvas_Move: Internal(action=move_elements),
     },
     ###
     'draw_tool_chosen': {
-        Initial: T('wait_for_draw'),
-        Tool_Changed: T('select_tool_chosen', action=update_chosen_tool),
-        # TODO move to 'app' state
+        Initial: T('draw_tool_hovering'),
+        Canvas_Up: T('draw_tool_hovering'),
     },
-    'wait_for_draw': {
+    'draw_tool_hovering': {
         Canvas_Down: T('drawing', action=initialize_rectangle),
     },
     'drawing': {
         Canvas_Move: Internal(action=draw_rectangle),
-        Canvas_Up: T('draw_tool_chosen', action=lambda _, __: update_grid()),
     },
 }
 
 
-hsm = HSM(states, trans)
+# initialize HSM with defined states and transitions and run
+
+hsm = HSM(states, transitions)
 hsm.start(eb)
+eb.dispatch(Tool_Changed(Drawing_tool))
 
 root.mainloop()
